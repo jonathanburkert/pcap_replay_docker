@@ -2,6 +2,7 @@ FROM registry.gitlab.com/mlandriscina/protoshark:latest
 
 USER root
 RUN curl https://bootstrap.pypa.io/get-pip.py | python
+RUN pip install ipaddr
 RUN pip install jupyter
 RUN jupyter-notebook --generate-config
 ENV PASSWD='sha1:d611329768de:7217062c8ae43ac48ac199a74829ec58de411fe6'
