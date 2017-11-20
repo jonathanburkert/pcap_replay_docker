@@ -1,47 +1,17 @@
-# ProtoShark Jupyter Notebook Docker
-Docker image with ProtoShark, and jupyter-notebook installed
+# PCAP Replay
 
-## Build Image
-- `git clone git@github.com:jonathanburkert/protoshark_jupyter.git`
-- `cd protoshark_jupyter`
-- `docker build -t protoshark_jupyter .`
+## Actions to take on Host
+None...
 
-## Run
-- `docker run -d --name protoshark_jupyter --privileged --net=host -p 127.0.0.1:8888:8888 protoshark_jupyter`
-- You should now have port 8888 open on the lo interface, use a web browser to connect and the password is `password`
+## Building the image
+`cd pcap_replay`
+`docker build -t pcap_replay .`
 
-## Examples
-### Server
-```
-from protoShark.dissect import Server
+## Creating a container
+`docker create --name pcap_replay -v {path to pcap_replay}/pcap_replay:/pcap_replay --privileged --net=host --env CAPTURE_INTERFACE={interface} pcap_replay`
 
-proto_pipe = '/tmp/proto_pipe'
+## Starting a container
+`docker start pcap_replay`
 
-# To read from an interface: 
-options = '-i eno1'
-
-# To read from a PCAP:
-#options = '-r traffic.pcap'
-
-s = Server(proto_pipe, options)
-s.start()
-```
-
-### Client
-```
-from protoShark.dissect import Client
-from protoShark.packets import Packet
-from protoShark.write import FileWriter
-import binascii
-
-proto_pipe = '/tmp/proto_pipe'
-c = Client(proto_pipe)
-c.connect()
-
-pkts = []
-while True:
-    pkt = c.read_next()
-    if pkt is None:
-        break
-    pkts.append(pkt)
-```
+## Starting Jupyter-Notebook
+`docker exec pcap_replay /usr/local/bin/jupyter-notebook --no-browser --allow-root`
