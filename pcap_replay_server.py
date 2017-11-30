@@ -33,13 +33,23 @@ class RequestHandler(BaseHTTPRequestHandler):
             replay_pcap(tmp_file, replay_interface)
 
             # Causes Cerebro to error :-(
-            message = "\n{pcap_name} replay complete.\n".format(pcap_name=pcap_name)
-            self.wfile.write(message)
+            #message = "\n{pcap_name} replay complete.\n".format(pcap_name=pcap_name)
+            #self.wfile.write(message)
 
-        elif re.search('/update.*', self.path) != None:
+        elif re.search('/capture.*', self.path) != None:
+
+            post_data = self.rfile.read(content_length)
+            post_data = json.loads(post_data)
+            pcap_name = post_data.get('pcap_name')
+            vic_ips = post_data.get('vic_ips')
+            mal_ips = post_data.get('mal_ips')
+            pcap_path = args.pcap_path
+            capture_interface = args.capture_interface
+
+            capture_pcap(pcap_name, pcap_path, mal_ips, vic_ips, capture_interface)
 
             # Return an update of available scenarios to Cerebro
-            self.wfile.write("Under Construction!!!")
+            #self.wfile.write("Under Construction!!!")
 
 
 def modify_pcap(ip_map, pcap_name, named_pipe, pcap_path, tmp_file, replay_interface):
@@ -111,6 +121,17 @@ def replay_pcap(tmp_file, replay_interface):
     subprocess.Popen(cmd.split())
 
 
+def capture_pcap(pcap_name, pcap_path, mal_ips, vic_ips, capture_interface):
+
+    mal_ips = [ip+'/32' if '/' not in ip else ip for ip in mal_ips]
+    vic_ips = [ip+'/32' if '/' not in ip else ip for ip in vic_ips]
+    cmd = "tcpdump -nnn -i {interface} -w {pcap} ".format(interface=capture_interface, pcap=pcap_path + pcap_name)
+    cmd += "'(" + ' or '.join(["net " + ip for ip in mal_ips]) + ")'"
+    cmd += ' and '
+    cmd += "'(" + ' or '.join(["net " + ip for ip in vic_ips]) + ")'"
+
+
+
 def get_replay_mac(replay_interface):
 
     with open('/sys/class/net/'+replay_interface+'/address') as replay_mac:
@@ -157,7 +178,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--ip", action="store", dest="server_ip", default="127.0.0.1", type=str)
 parser.add_argument("--port", action="store", dest="server_port", default=7000, type=int)
 parser.add_argument("--pcap-path", action="store", dest="pcap_path", default="/pcap_replay/pcap/", type=str)
-parser.add_argument("--interface", action="store", dest="replay_interface",required=True , type=str)
+parser.add_argument("--replay-interface", action="store", dest="replay_interface",required=True , type=str)
+parser.add_argument("--capture-interface", action="store", dest="capture_interface",required=True , type=str)
 parser.add_argument("--named-pipe", action="store", dest="named_pipe", default="/tmp/named_pipe", type=str)
 parser.add_argument("--tmp-file", action="store", dest="tmp_file", default="/tmp/tmp.pcap", type=str)
 
