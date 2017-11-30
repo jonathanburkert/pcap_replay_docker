@@ -19,7 +19,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         if re.search('/execute.*', self.path) != None:
 
-            content_length = int(self.headers['Content-Length'])
+
             post_data = self.rfile.read(content_length)
             post_data = json.loads(post_data)
             ip_map = post_data.get('ip_map')
@@ -38,6 +38,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         elif re.search('/capture.*', self.path) != None:
 
+            content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
             post_data = json.loads(post_data)
             pcap_name = post_data.get('pcap_name')
@@ -49,7 +50,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             capture_pcap(pcap_name, pcap_path, mal_ips, vic_ips, capture_interface)
 
             # Return an update of available scenarios to Cerebro
-            #self.wfile.write("Under Construction!!!")
+            self.wfile.write("Under Construction!!!")
 
 
 def modify_pcap(ip_map, pcap_name, named_pipe, pcap_path, tmp_file, replay_interface):
@@ -126,10 +127,14 @@ def capture_pcap(pcap_name, pcap_path, mal_ips, vic_ips, capture_interface):
     mal_ips = [ip+'/32' if '/' not in ip else ip for ip in mal_ips]
     vic_ips = [ip+'/32' if '/' not in ip else ip for ip in vic_ips]
     cmd = "tcpdump -nnn -i {interface} -w {pcap} ".format(interface=capture_interface, pcap=pcap_path + pcap_name)
-    cmd += "'(" + ' or '.join(["net " + ip for ip in mal_ips]) + ")'"
-    cmd += ' and '
-    cmd += "'(" + ' or '.join(["net " + ip for ip in vic_ips]) + ")'"
+    #cmd += "'(" + ' or '.join(["net " + ip for ip in mal_ips]) + ")'"
+    #cmd += ' and '
+    #cmd += "'(" + ' or '.join(["net " + ip for ip in vic_ips]) + ")'"
 
+    #with open('log', 'a') as f:
+    #    f.write(cmd + '\n')
+
+    subprocess.Popen(cmd.split())
 
 
 def get_replay_mac(replay_interface):
