@@ -11,4 +11,4 @@ RUN sed -i s/"#c.NotebookApp.password = u''"/"c.NotebookApp.password = u'$PASSWD
 RUN mkdir /ipynb
 RUN mkdir /pcap_server
 WORKDIR /ipynb
-CMD ["python",  "/pcap_replay/pcap_replay_server.py", "--$CAPTURE_INTERFACE"]
+CMD ["python",  "/pcap_replay/pcap_replay_server.py", "--interface", "$CAPTURE_INTERFACE"]
