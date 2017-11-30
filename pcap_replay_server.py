@@ -1,6 +1,7 @@
 from protoShark.write import WireWriter
 from protoShark.dissect import Server
 from protoShark.dissect import Client
+from protoShark.packets.utils import *
 import binascii
 import time
 from netaddr import IPAddress, IPNetwork
@@ -24,7 +25,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             ip_map = post_data.get('ip_map')
             pcap_name = post_data.get('pcap_name')
             
-            run_scenario(ip_map, pcap_name)
+            modify_pcap(ip_map, pcap_name)
+            replay_pcap(tmp_file)
 
             # Causes Cerebro to error :-(
             message = "\n{pcap_name} replay complete.\n".format(pcap_name=pcap_name)
@@ -36,64 +38,72 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.wfile.write("Under Construction!!!")
 
 
-def run_scenario(ip_map, pcap_name):
+def modify_pcap(ip_map, pcap_name):
 
         pcap_path = args.pcap_path
-        replay_interface = [args.replay_interface]
         named_pipe = args.named_pipe
+        tmp_file = args.tmp_file
+
+        # Creating the server process and writing packets to named_pipe
         options = '-r {pcap}'.format(pcap=pcap_path+pcap_name)
         Server.create_as_process(named_pipe, options)
 
         # Magic?!?!
         time.sleep(1)
 
+        # Creating the client to connect to named_pipe and read packets
         client = Client(named_pipe)
         client.connect()
-
-        ww = WireWriter()
-        ww.open_interfaces_for_sending(replay_interface)
 
         # Converting ip_map to IPNetwork objects
         ip_map = {IPNetwork(k): IPNetwork(v) for k,v in ip_map.iteritems()}
         # Creating a list of IPNetwork's we are interested in modifying
         unmod_nets = ip_map.keys()
 
-        while True:
-            pkt = client.read_next()
-            if pkt is None:
-                break
+        # Creating file writer object
+        fw = WireWriter()
+        errbuff = fw.make_pcap_error_buffer()
 
-            try:
-                attrs = pkt.get_attributes()
-                delta = float(attrs['frame.time_delta'][0].get_fvalue())
-                ipv4 = attrs.get('ip') and attrs.get('ip.version')[0].get_fvalue() == '4'
-            except:
-                ipv4 = False
+        with open(tmp_file, 'w') as pcap:
 
-            if ip_map and ipv4:
+            while True:
+                pkt = client.read_next()
+                if pkt is None:
+                    break
 
-                src_ip = attrs['ip.src'][0].get_fvalue()
-                dest_ip = attrs['ip.dst'][0].get_fvalue()
+                if ip_map and is_ipv4(pkt):
 
-                # Need to find an efficient way to avoid this
-                src_ip = mod_network(src_ip, unmod_nets, ip_map)
-                src_ip = dd_2_hex(src_ip)
-                pkt.set_attribute(src_ip, "ip.src")
+                    attrs = pkt.get_attributes()
+                    src_ip = attrs['ip.src'][0].get_fvalue()
+                    dest_ip = attrs['ip.dst'][0].get_fvalue()
 
-                dest_ip = mod_network(dest_ip, unmod_nets, ip_map)
-                dest_ip = dd_2_hex(dest_ip)
-                pkt.set_attribute(dest_ip, 'ip.dst')
+                    # Checking to see if packet needs modification, difficult because we have
+                    # a list of CIDR networks we need to see if an IP address falls within
+                    src_ip = mod_network(src_ip, unmod_nets, ip_map)
+                    src_ip = dd_2_hex(src_ip)
+                    pkt.set_attribute(src_ip, "ip.src")
 
-            # Maintaining original PCAP timing, doesn't work :-(
-            if delta > 1:
-                time.sleep(delta)
+                    dest_ip = mod_network(dest_ip, unmod_nets, ip_map)
+                    dest_ip = dd_2_hex(dest_ip)
+                    pkt.set_attribute(dest_ip, 'ip.dst')
 
-            pkt_data = binascii.a2b_hex(pkt.get_pkt_data())
-            ww.write(pkt_data)
+                utime, ltime = pkt.get_time()
+                dataLen = pkt.get_num_bytes()
+                pkt_data = binascii.a2b_hex(pkt.get_pkt_data())
 
-        ww.close_sending_interfaces()
+                fw.write(pcap, utime, ltime, dataLen, pkt_data, errbuff)
 
-        subprocess.Popen('rm -rf {}'.format(named_pipe).split())
+            # Removing named_pipe after we've finished reading, seems to avoid some errors
+            # with frequent requests
+            subprocess.Popen('rm -rf {}'.format(named_pipe).split())
+
+
+def replay_pcap(tmp_file):
+
+    replay_interface = args.replay_interface
+    cmd = "tcpreplay -i {interface} {pcap}".format(interface=replay_interface, pcap=tmp_file)
+
+    subprocess.Popen(cmd.split())
 
 
 def dd_2_hex(ip_addr):
@@ -105,11 +115,13 @@ def mod_network(ip_addr, unmod_nets, ip_map):
 
     ip_addr = IPAddress(ip_addr)
 
+    # Looping through the list of unmod_nets and checking if IP is in network, if True then break
     for net in unmod_nets:
         in_network = ip_addr in net
         if in_network:
             break
 
+    # in_network would be False here if IP address wasn't in any of the unmod_networks
     if not in_network:
         return ip_addr.format()
 
@@ -127,15 +139,19 @@ def mod_network(ip_addr, unmod_nets, ip_map):
 
     return ip_addr
 
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--ip", action="store", dest="server_ip", default="127.0.0.1", type=str)
+    parser.add_argument("--port", action="store", dest="server_port", default=7000, type=int)
+    parser.add_argument("--pcap-path", action="store", dest="pcap_path", default="/pcap_replay/pcap/", type=str)
+    parser.add_argument("--interface", action="store", dest="replay_interface",required=True , type=str)
+    parser.add_argument("--named-pipe", action="store", dest="named_pipe", default="/tmp/named_pipe", type=str)
+    parser.add_argument("--tmp-file", action="store", dest="tmp_file", default="/tmp/tmp.pcap", type=str)
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--ip", action="store", dest="server_ip", default="127.0.0.1", type=str)
-parser.add_argument("--port", action="store", dest="server_port", default=7000, type=int)
-parser.add_argument("--pcap-path", action="store", dest="pcap_path", default="/pcap_replay/pcap/", type=str)
-parser.add_argument("--interface", action="store", dest="replay_interface",required=True , type=str)
-parser.add_argument("--named-pipe", action="store", dest="named_pipe", default="/tmp/named_pipe", type=str)
+    args = parser.parse_args()
 
-args = parser.parse_args()
+    server = HTTPServer((args.server_ip, args.server_port), RequestHandler)
+    server.serve_forever()
 
-server = HTTPServer((args.server_ip, args.server_port), RequestHandler)
-server.serve_forever()
+if __name__ is "__main__":
+    main()
