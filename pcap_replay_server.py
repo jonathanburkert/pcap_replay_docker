@@ -19,7 +19,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         if re.search('/execute.*', self.path) != None:
 
-
+            content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
             post_data = json.loads(post_data)
             ip_map = post_data.get('ip_map')
@@ -119,7 +119,8 @@ def replay_pcap(tmp_file, replay_interface):
 
     cmd = "tcpreplay -i {interface} {pcap}".format(interface=replay_interface, pcap=tmp_file)
 
-    subprocess.Popen(cmd.split())
+    proc = subprocess.Popen(cmd.split())
+    proc.wait()
 
 
 def capture_pcap(pcap_name, pcap_path, mal_ips, vic_ips, capture_interface):
@@ -134,7 +135,8 @@ def capture_pcap(pcap_name, pcap_path, mal_ips, vic_ips, capture_interface):
     #with open('log', 'a') as f:
     #    f.write(cmd + '\n')
 
-    subprocess.Popen(cmd.split())
+    proc = subprocess.Popen(cmd.split())
+    proc.wait()
 
 
 def get_replay_mac(replay_interface):
